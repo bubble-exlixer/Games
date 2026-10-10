@@ -1,0 +1,30 @@
+; Dead Shift: Westfield High (Godot port)
+config_version=5
+
+[application]
+config/name="Dead Shift: Westfield High"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.4", "GL Compatibility")
+
+[display]
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="disabled"
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=0
+anti_aliasing/quality/msaa_3d=0
+limits/opengl/max_lights_per_object=16
+lights_and_shadows/directional_shadow/size=2048
+environment/defaults/default_clear_color=Color(0.043, 0.051, 0.071, 1)
+
+[physics]
+common/physics_ticks_per_second=60
+3d/physics_engine="Jolt Physics"
+
+[navigation]
+3d/default_cell_size=0.2
+3d/default_cell_height=0.1
+3d/merge_rasterizer_cell_scale=0.001
