@@ -19,8 +19,9 @@ KEYBOARD + MOUSE
   E or G throw a grenade
   Q, 1, 2 or mouse wheel swap guns
   V knife (a kick if you're sprinting), L flashlight
-  WILDCATS BAT (front of the school, 1250): click to swing, keep clicking for the
+  WILDCATS BAT (cafeteria stage, 1250): click to swing, keep clicking for the
     3-hit combo (sweep, backhand, overhead slam). V swings it too.
+  F on a chair, bin, trophy or fire extinguisher picks it up; click to throw it
   ESC pause menu (settings live there), F11 fullscreen
 
 CONTROLLER (Xbox layout)
