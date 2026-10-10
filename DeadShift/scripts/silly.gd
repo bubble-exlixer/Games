@@ -1,22 +1,16 @@
 extends Node3D
-## The silly stuff: Snow Day / Fire Drill / Free Period power-ups, the principal's PA announcements
+## The silly stuff: the Free Period power-up, the principal's PA announcements
 ## (every 10 rounds) and the Shock Gate trap between the gym and the parking lot.
 
 var game
 
 # ---------------------------------------------------------------- power-ups
 const POWERS := {
-	"snow": {"text": "SNOW\nDAY", "col": Color8(170, 220, 255), "light": Color8(140, 200, 255)},
-	"drill": {"text": "FIRE\nDRILL", "col": Color8(255, 80, 60), "light": Color8(255, 60, 40)},
 	"free": {"text": "FREE\nPERIOD", "col": Color8(120, 255, 140), "light": Color8(90, 255, 120)},
 }
-var snow_t := 0.0
-var drill_t := 0.0
-var snow_fx: CPUParticles3D
 var tint: ColorRect
 var caption: Label
 var cap_tween: Tween
-var alarm_t := 0.0
 
 # ---------------------------------------------------------------- shock gate
 const GATE_A := Vector3(-48.0, 0.0, 6.0)     # the gym -> parking lot doorway, west post
@@ -188,52 +182,12 @@ func drop(kind: String, at: Vector3) -> void:
 
 func activate(kind: String) -> void:
 	match kind:
-		"snow":
-			snow_t = 5.0
-			for z in game.zombies:
-				if z.alive:
-					z.freeze(5.0)
-			game.audio.play("snowday", null, 0)
-			game.audio.play("iceCreak", null, -4)
-			game.hud.banner("SNOW DAY!", "SCHOOL'S CANCELLED", 2.0)
-			_snowfall(true)
-		"drill":
-			drill_t = 6.0
-			alarm_t = 0.0
-			for z in game.zombies:
-				z.fire_drill(6.0)
-			game.hud.banner("FIRE DRILL!", "SINGLE FILE, EVERYBODY", 2.0)
 		"free":
 			game.player.free_t = 10.0
 			var sl = game.player.slots[game.player.cur]
 			sl.mag = int(game.player.w().mag)
 			game.audio.play("freebell", null, 0)
 			game.hud.banner("FREE PERIOD!", "INFINITE AMMO", 2.0)
-
-func _snowfall(on: bool) -> void:
-	if snow_fx == null:
-		snow_fx = CPUParticles3D.new()
-		snow_fx.amount = 420
-		snow_fx.lifetime = 2.6
-		snow_fx.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-		snow_fx.emission_box_extents = Vector3(9, 0.5, 9)
-		snow_fx.direction = Vector3(0.2, -1, 0)
-		snow_fx.spread = 15
-		snow_fx.initial_velocity_min = 2.0
-		snow_fx.initial_velocity_max = 3.2
-		snow_fx.gravity = Vector3(0, -1.0, 0)
-		var qm := QuadMesh.new()
-		qm.size = Vector2(0.09, 0.09)
-		var mat := StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		mat.albedo_color = Color(0.95, 0.97, 1.0)
-		qm.material = mat
-		snow_fx.mesh = qm
-		snow_fx.local_coords = false
-		game.player.add_child(snow_fx)
-		snow_fx.position = Vector3(0, 4.5, 0)
-	snow_fx.emitting = on
 
 # ---------------------------------------------------------------- PA (every 10 rounds)
 const PA_LINES := [
@@ -418,18 +372,3 @@ func _process(dt: float) -> void:
 	if game == null:
 		return
 	_gate_tick(dt)
-	if snow_t > 0:
-		snow_t -= dt
-		tint.color = Color(0.75, 0.88, 1.0, 0.12 * minf(1.0, snow_t))
-		if snow_t <= 0:
-			_snowfall(false)
-			tint.color.a = 0
-	elif drill_t > 0:
-		drill_t -= dt
-		alarm_t -= dt
-		if alarm_t <= 0:
-			alarm_t = 1.95
-			game.audio.play("alarm", null, -6)
-		tint.color = Color(1.0, 0.1, 0.05, (0.08 + 0.08 * sin(Time.get_ticks_msec() / 120.0)) * minf(1.0, drill_t))
-		if drill_t <= 0:
-			tint.color.a = 0

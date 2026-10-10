@@ -181,7 +181,7 @@ func _ready() -> void:
 	if tour != "":
 		_tour()
 	if t3 != "":
-		if t3 != "intro":
+		if not (t3 in ["intro", "lamps"]):
 			world.power_on(Vector3.ZERO)
 		var tt = preload("res://scripts/tests3.gd").new()
 		add_child(tt)
@@ -257,6 +257,10 @@ func _input(e: InputEvent) -> void:
 	if menu.visible:
 		return
 	var pressed: bool = e.is_pressed() and not e.is_echo()
+	if game.deathcam.playing:
+		if pressed and not (e is InputEventJoypadMotion):
+			game.deathcam.request_skip()
+		return
 	if game.cutscene.playing:
 		if pressed and not (e is InputEventJoypadMotion) and not (e is InputEventKey and e.keycode == KEY_F11):
 			game.cutscene.request_skip()

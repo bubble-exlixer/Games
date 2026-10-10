@@ -144,6 +144,7 @@ func brain(z, dt: float, p, dist: float, see: bool) -> void:
 						var away: Vector3 = p.global_position - z.global_position
 						away.y = 0
 						p.velocity += away.normalized() * 22.0 + Vector3(0, 5, 0)
+						game.last_attacker = z
 						p.hurt(z.dmg * 0.7)
 						p.shake = maxf(p.shake, 0.35)
 						game.audio.play("thock", p.global_position, 4, 0.7)
@@ -248,6 +249,7 @@ func _process(dt: float) -> void:
 		var hd := Vector2(d.x, d.z).length()
 		if not r.hit and absf(hd - r.r) < 0.7 and d.y < 0.6 and P.is_on_floor() and not P.dead:
 			r.hit = true
+			game.last_attacker = game.boss
 			P.hurt(r.dmg)
 			P.velocity += Vector3(d.x, 0, d.z).normalized() * 10.0 + Vector3(0, 5, 0)
 			if game.boss != null and is_instance_valid(game.boss):
@@ -270,6 +272,7 @@ func _process(dt: float) -> void:
 		var pd: Vector3 = P.global_position - c.pos
 		if not P.dead and c.ht <= 0 and c.t > 0.5 and Vector2(pd.x, pd.z).length() < 3.0 and absf(pd.y) < 2.0:
 			c.ht = 0.5
+			game.last_attacker = game.boss
 			P.hurt(5, true)
 			game.audio.play("cough", null, -6)
 		if c.t <= 0:

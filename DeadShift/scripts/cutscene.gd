@@ -160,6 +160,8 @@ func power() -> void:
 			[0.8, func():
 				game.world.power_on(sw, 0.025)
 				game.audio.play("thud", null, 0, 0.5)]]},
+		# the parking lot street lamps surge brighter
+		{"from": Vector3(-18, 3.4, 13.5), "to": Vector3(-22, 3.2, 15), "look": Vector3(-44, 3.0, 30), "dur": 2.3},
 		{"from": Vector3(-30, 5.6, -30), "to": Vector3(-20, 5.6, -30), "look_from": Vector3(10, 5, -30), "look_to": Vector3(15, 5, -30), "dur": 1.6},
 		{"from": Vector3(0, 3.2, 13), "to": Vector3(0, 2.8, 10), "look": Vector3(0, 1, -6), "dur": 1.6},
 		{"from": Vector3(-34, 4.5, 4), "to": Vector3(-36, 4.0, 2), "look": Vector3(-50, 1.5, -10), "dur": 1.8, "events": [

@@ -160,6 +160,32 @@ static func _bat(arms: bool) -> Node3D:
 		_box(g, Vector3(0.085, 0.09, 0.09), skin, Vector3(0, 0.18, 0.0), 0.0, true)
 	return g
 
+## Volcano Launcher: a garden pump sprayer with a papier-mache science-fair volcano taped on top
+static func _volc(arms: bool) -> Node3D:
+	var g := Node3D.new()
+	var tank := _m(Color8(232, 232, 226), 0.1, 0.5)
+	var blue := _m(Color8(40, 90, 190), 0.2, 0.5)
+	var black := _m(Color8(30, 30, 34), 0.2, 0.6)
+	var rock := _m(Color8(120, 92, 60), 0.0, 0.95)
+	var lava := StandardMaterial3D.new()
+	lava.albedo_color = Color8(255, 110, 30)
+	lava.emission_enabled = true
+	lava.emission = Color8(255, 90, 20)
+	lava.emission_energy_multiplier = 1.4
+	_cyl(g, 0.07, 0.07, 0.3, tank, Vector3(0, -0.02, -0.12), Vector3(PI / 2, 0, 0))       # pump tank
+	_cyl(g, 0.072, 0.072, 0.03, blue, Vector3(0, -0.02, -0.27), Vector3(PI / 2, 0, 0))
+	_cyl(g, 0.016, 0.012, 0.3, black, Vector3(0, 0.0, -0.42), Vector3(PI / 2, 0, 0))     # nozzle wand
+	_cyl(g, 0.03, 0.02, 0.05, blue, Vector3(0, 0.0, -0.58), Vector3(PI / 2, 0, 0))
+	_box(g, Vector3(0.05, 0.12, 0.06), black, Vector3(0, -0.11, -0.02), 0.25)                 # grip
+	_cyl(g, 0.02, 0.11, 0.17, rock, Vector3(0, 0.12, -0.13))                                   # the volcano
+	_cyl(g, 0.025, 0.025, 0.02, lava, Vector3(0, 0.205, -0.13))
+	var drip := _cyl(g, 0.012, 0.02, 0.09, lava, Vector3(0.03, 0.16, -0.12))
+	drip.rotation.z = 0.5
+	_box(g, Vector3(0.15, 0.025, 0.06), _m(Color8(160, 160, 150), 0.0, 0.9), Vector3(0, 0.06, -0.13))   # duct tape
+	if arms:
+		_arms(g)
+	return g
+
 ## arms: keep the viewmodel hand + sleeve (they're the last two pieces of every exported gun)
 static func make(id: String, arms: bool, world = null) -> Node3D:
 	match id:
@@ -175,6 +201,8 @@ static func make(id: String, arms: bool, world = null) -> Node3D:
 			return _slip(arms)
 		"bat":
 			return _bat(arms)
+		"volc":
+			return _volc(arms)
 	var g: Node3D = load("res://assets/models/guns/%s.glb" % id).instantiate()
 	if world:
 		world._crisp(g)

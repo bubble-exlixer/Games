@@ -19,6 +19,8 @@ var wonder                    # projectile novelty weapons (wonder.gd)
 var bosses                    # boss moves, phase 2, taunts (bosses.gd)
 var escape                    # buy the bus (escape.gd)
 var run_t := 0.0              # time played this run
+var grab                      # pick up and throw props (grab.gd)
+var deathcam                  # the yearbook death cam (deathcam.gd)
 var player
 var hud
 var fx
@@ -123,6 +125,9 @@ func setup(w, p, h, f, a, zr: Node3D) -> void:
 	audio = a
 	zroot = zr
 	fx.game = self
+	world.audio_cb = func(p: Vector3):
+		audio.play("zap", p, -6, 0.55)
+		audio.play("lclick", p, 0, 0.7)
 	for i in world.data.zombie_samples.size():
 		var k: String = world.data.zombie_samples[i].kind
 		if not samples_by_kind.has(k):
@@ -166,6 +171,12 @@ func setup(w, p, h, f, a, zr: Node3D) -> void:
 	wonder = preload("res://scripts/wonder.gd").new()
 	world.add_child(wonder)
 	wonder.setup(self)
+	grab = preload("res://scripts/grab.gd").new()
+	add_child(grab)
+	grab.setup(self)
+	deathcam = preload("res://scripts/deathcam.gd").new()
+	add_child(deathcam)
+	deathcam.setup(self)
 	escape = preload("res://scripts/escape.gd").new()
 	world.add_child(escape)
 	escape.setup(self)
@@ -517,13 +528,16 @@ func bat_hit(origin: Vector3, look: Vector3, n: int) -> int:
 	hits.sort_custom(func(a, b): return a[0] < b[0])
 	var any_kill := false
 	var kills_now := 0
-	var mults := [1.0, 0.7, 0.5, 0.5]
+	# balance: one swing kills early on; by wave ~10 a regular zombie takes 2-3 swings.
+	# Only the first zombie in a sweep takes the full hit, and bosses take half.
+	var falloff := clampf(1.2 - 0.08 * wave, 0.4, 1.0)
+	var mults := [1.0, 0.45, 0.3, 0.3]
 	var count := 0
 	for h in hits.slice(0, 4 if n == 2 else 3):
 		var z = h[1]
 		var pt: Vector3 = z.global_position + Vector3(0, (0.45 if z.crawler else 1.45) * z.bscale, 0)
 		var kdir: Vector3 = ((f * 0.8 + Vector3(0, -0.35, 0)) if n == 2 else (f * 0.55 + side * 0.85 + Vector3(0, 0.25, 0))).normalized()
-		var dmg: float = float(wd.dmg) * mults[count] * (1.8 if n == 2 else 1.0)
+		var dmg: float = float(wd.dmg) * falloff * mults[count] * (1.5 if n == 2 else 1.0) * (0.5 if z.kind == "boss" else 1.0)
 		var res: Dictionary = z.damage(dmg, "head" if n == 2 and not z.crawler else "body", kdir, 6.5, false, pt)
 		count += 1
 		fx.spray(pt, kdir, Color8(122, 10, 10), 18, 5, 1.0, true)
@@ -589,6 +603,9 @@ func on_zombie_killed(z, head: bool, blast := false) -> void:
 			bonus = 50
 		"monitor":
 			bonus = 100
+		"mascot":
+			bonus = 150
+			hud.callout_small("MASCOT DOWN! +150")
 	add_points(100 + (50 if head else 0) + bonus)
 	zombies.erase(z)
 	audio.play("die", z.global_position + Vector3(0, 1.2, 0), -2)
@@ -961,7 +978,7 @@ func _step_pickups(dt: float) -> void:
 		i -= 1
 
 # ---------------------------------------------------------------- spitters and bloaters
-func spit(from: Vector3, target) -> void:
+func spit(from: Vector3, target, src = null) -> void:
 	var to: Vector3 = target.global_position + Vector3(0, 0.7, 0) + target.velocity * Vector3(1, 0, 1) * 0.4
 	var T := clampf(from.distance_to(to) / 13.0, 0.6, 1.6)
 	var g := Vector3(0, -17, 0)
@@ -982,7 +999,7 @@ func spit(from: Vector3, target) -> void:
 	m.add_child(l)
 	world.add_child(m)
 	m.global_position = from
-	spits.append({"n": m, "v": v, "t": 0.0})
+	spits.append({"src": src, "n": m, "v": v, "t": 0.0})
 	audio.play("spit", from)
 
 ## the Lunch Lady's ladle of gravy: an arcing glob that leaves a slow, scalding puddle
@@ -1074,6 +1091,7 @@ func _step_projectiles(dt: float) -> void:
 			var at: Vector3 = r.position if not r.is_empty() else np
 			if s.get("tray", false):
 				if hit_p:
+					last_attacker = boss
 					player.hurt(14)
 					if boss != null and is_instance_valid(boss):
 						bosses.event(boss, "hit")
@@ -1081,6 +1099,7 @@ func _step_projectiles(dt: float) -> void:
 				fx.spark(at, Vector3.UP)
 			elif s.get("gravy", false):
 				if hit_p:
+					last_attacker = boss
 					player.hurt(10)
 					player.slow_t = 1.5
 				acid_puddle(at, true)
@@ -1088,6 +1107,7 @@ func _step_projectiles(dt: float) -> void:
 				audio.play("slop", at)
 			else:
 				if hit_p:
+					last_attacker = s.get("src")
 					player.hurt(10, true)
 				acid_puddle(at)
 				fx.splash(at, Color(0.6, 0.9, 0.2), 16)
@@ -1145,6 +1165,8 @@ func _pick_kind() -> String:
 		return "spitter"
 	if wave >= 3 and randf() < 0.07:
 		return "monitor"
+	if wave >= 6 and randf() < 0.06 and not zombies.any(func(z): return is_instance_valid(z) and z.alive and z.kind == "mascot"):
+		return "mascot"
 	if wave >= 3 and randf() < minf(0.12 + wave * 0.03, 0.45):
 		return "runner"
 	return "walker"
@@ -1211,10 +1233,18 @@ func _find_interact() -> Dictionary:
 		if box_state == "offer":
 			return {"kind": "box", "text": "Press {use} to take the %s" % world.data.weapons[box_weapon].name}
 		return {"kind": "box", "text": "Press {use} for the mystery box  [%d]" % BOX_COST}
+	var gp: String = grab.prompt()
+	if gp != "":
+		return {"kind": "grab", "text": gp}
 	return {}
 
 func interact() -> void:
-	if player.dead or interact_target.is_empty():
+	if player.dead:
+		return
+	if grab.held != null:
+		grab.drop()
+		return
+	if interact_target.is_empty():
 		return
 	var it := interact_target
 	match it.kind:
@@ -1267,6 +1297,8 @@ func interact() -> void:
 			hammy.pap_buy()
 		"gate":
 			silly.buy()
+		"grab":
+			grab.pick_up()
 		"bus":
 			escape.buy()
 		"hamster":
@@ -1615,12 +1647,16 @@ func start_wave() -> void:
 	hud.round_punch()
 	audio.play("wave")
 
+var last_attacker = null       # the zombie that last hurt the player (for the death cam)
+
 func player_died() -> void:
 	state = "over"
 	Engine.time_scale = 1.0
 	audio.play("death")
 	audio.set_track("")
 	var rec: Dictionary = settings.record(wave, kills, points) if settings else {}
+	if not player.bot:
+		await deathcam.play(deathcam.killer())
 	hud.game_over(wave, kills, points, rec, settings.scores if settings else {})
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -1683,8 +1719,9 @@ func _process(dt: float) -> void:
 		else:
 			audio.set_track("sNight" if wave <= 3 else ("sRock" if wave <= 7 else "sHeavy"))
 		audio.set_calm(state != "play" or zombies.is_empty())
-	# lightning outdoors
-	bolt_t -= dt
+	_weather(dt)
+	# lightning outdoors (more often in a downpour)
+	bolt_t -= dt * (0.6 + 0.45 * world.rain_k)
 	if bolt_t <= 0:
 		bolt_t = randf_range(9, 22)
 		_lightning()
@@ -1699,6 +1736,21 @@ func _hud_state() -> Dictionary:
 	hs.nades = grenades
 	hs.x2 = x2_t
 	return hs
+
+## the rain drifts between drizzle, steady and downpour every minute or two, blending over ~15 seconds
+var rain_target := 1.0
+var rain_hold := 70.0
+func _weather(dt: float) -> void:
+	rain_hold -= dt
+	if rain_hold <= 0:
+		rain_hold = randf_range(60.0, 140.0)
+		var opts: Array = [0.3, 1.0, 1.8].filter(func(k): return absf(k - rain_target) > 0.1)
+		rain_target = opts[randi() % opts.size()]
+	world.rain_k = move_toward(world.rain_k, rain_target, dt / 15.0 * 1.5)
+	# the rain bed: louder in a downpour, muffled indoors
+	var vol: float = -14.0 + 7.0 * world.rain_k - (5.0 if world.under_roof else 0.0)
+	if audio.amb.playing and audio.amb.volume_db > -40.0:
+		audio.amb.volume_db = move_toward(audio.amb.volume_db, vol, dt * 6.0)
 
 func _lightning() -> void:
 	var env: Environment = world.env
@@ -1905,6 +1957,7 @@ func _step_flasks(dt: float) -> void:
 		if not r.is_empty() or on_p or f.t > 4:
 			var at: Vector3 = r.position if not r.is_empty() else to
 			if on_p and not f.vol:
+				last_attacker = boss
 				player.hurt(8, true)
 				if boss != null and is_instance_valid(boss):
 					bosses.event(boss, "hit")

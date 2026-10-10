@@ -158,7 +158,8 @@ func _build_lights() -> void:
 		o.shadow_enabled = false
 		add_child(o)
 		o.global_position = Vector3(l.pos[0], l.pos[1], l.pos[2])
-		lamps.append({"light": o, "base": o.light_energy, "t": randf() * 10.0, "flicker": randf() < 0.18, "on": false, "dead": randf() < 0.3})
+		lamps.append({"light": o, "base": o.light_energy, "t": randf() * 10.0, "flicker": randf() < 0.18, "on": false, "dead": randf() < 0.3,
+			"street_c": l.pos[1] > 5.5 and l.color[0] > 240 and l.color[2] < 120, "street": false, "boost": 1.0, "range": o.omni_range})
 
 func _build_shafts() -> void:
 	for s in data.shafts:
@@ -251,7 +252,7 @@ func _build_fires() -> void:
 
 func _build_rain() -> void:
 	rain = GPUParticles3D.new()
-	rain.amount = 1400
+	rain.amount = 2600          # downpour; the weather scales it with amount_ratio
 	rain.lifetime = 0.8
 	rain.visibility_aabb = AABB(Vector3(-20, -14, -20), Vector3(40, 28, 40))
 	var pm := ParticleProcessMaterial.new()
@@ -271,8 +272,14 @@ func _build_rain() -> void:
 	qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	qm.albedo_color = Color(0.7, 0.75, 0.85, 0.35)
 	q.material = qm
+	rain_mat = qm
 	rain.draw_pass_1 = q
 	add_child(rain)
+
+# weather: 0.3 drizzle, 1.0 steady, 1.8 downpour (game.gd drifts it between states)
+var rain_k := 1.0
+var rain_mat: StandardMaterial3D
+var under_roof := false
 
 func update_look(dt: float, cam: Camera3D) -> void:
 	# rain follows the camera; stops under a roof
@@ -282,7 +289,11 @@ func update_look(dt: float, cam: Camera3D) -> void:
 	var q := PhysicsRayQueryParameters3D.create(p, p + Vector3(0, 25, 0), WORLD_LAYER | ROOF_LAYER)
 	var roof := space.intersect_ray(q)
 	rain.emitting = roof.is_empty()
-	var want := Vector2(4, 30) if roof.is_empty() else Vector2(6, 30)
+	under_roof = not roof.is_empty()
+	rain.amount_ratio = clampf(rain_k / 1.8, 0.08, 1.0)
+	rain_mat.albedo_color.a = 0.22 + 0.12 * clampf(rain_k, 0.0, 1.8)
+	var far := 30.0 - 4.5 * maxf(0.0, rain_k - 1.0)
+	var want := Vector2(4 - maxf(0.0, rain_k - 1.0), far) if roof.is_empty() else Vector2(6, 30)
 	fog_target = fog_target.lerp(want, minf(1.0, dt * 2.0))
 	env.fog_depth_begin = fog_target.x
 	env.fog_depth_end = fog_target.y
@@ -298,9 +309,22 @@ func update_look(dt: float, cam: Camera3D) -> void:
 			if r.is_empty():
 				l.on = true
 				l.dead = false
+				if l.street_c:
+					l.street = true
+					_street_glow(l)
 	for l in lamps:
 		l.t += dt
-		if l.on:
+		if l.street:
+			# parking lot street lamps: lit from the start, much brighter once the school has power
+			l.light.light_energy = l.base * l.boost
+			l.light.omni_range = l.range * (1.0 + (l.boost - 1.0) * 0.45)
+			if l.has("glow"):
+				l.glow.modulate = Color(1, 0.75, 0.45, clampf(0.35 + (l.boost - 1.0) * 0.5, 0.0, 1.0))
+				l.glow.pixel_size = 0.012 * (1.0 + (l.boost - 1.0) * 0.6)
+				l.pool.light_energy = maxf(0.0, l.boost - 1.0) * 4.0
+				l.cone_mat.albedo_color.a = 0.025 + maxf(0.0, l.boost - 1.0) * 0.05
+				l.patch_mat.albedo_color.a = 0.08 + maxf(0.0, l.boost - 1.0) * 0.32
+		elif l.on:
 			l.light.light_energy = l.base * ((0.25 if fmod(l.t * 7.3, 5.0) < 0.35 else 1.0) if l.flicker else 1.0)
 		else:
 			# no power: emergency glow, some dead, the rest stuttering
@@ -340,9 +364,108 @@ func _on_baked() -> void:
 		bake_again = false
 		rebake()
 
+## a soft glow sprite on a street lamp's head, so you can see the lamp itself get brighter
+var _glow_tex: Texture2D
+func _street_glow(l: Dictionary) -> void:
+	if _glow_tex == null:
+		var gt := GradientTexture2D.new()
+		var gr := Gradient.new()
+		gr.set_color(0, Color(1, 1, 1, 1))
+		gr.set_color(1, Color(1, 1, 1, 0))
+		gt.gradient = gr
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 64
+		gt.height = 64
+		_glow_tex = gt
+	var s := Sprite3D.new()
+	s.texture = _glow_tex
+	s.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	s.shaded = false
+	s.transparent = true
+	s.pixel_size = 0.004
+	s.modulate = Color(1, 0.75, 0.45, 0.35)
+	s.render_priority = 1
+	add_child(s)
+	s.global_position = l.light.global_position
+	l["glow"] = s
+	# a pool of light on the asphalt that only comes alive once the power's on
+	var sp := SpotLight3D.new()
+	sp.light_color = Color8(255, 176, 96)
+	sp.spot_range = 12.0
+	sp.spot_angle = 52.0
+	sp.spot_attenuation = 0.6
+	sp.light_energy = 0.0
+	add_child(sp)
+	sp.global_position = l.light.global_position - Vector3(0, 0.2, 0)
+	sp.rotation = Vector3(-PI / 2, 0, 0)
+	l["pool"] = sp
+	# the light itself, drawn: a hazy cone in the rain and a bright patch on the asphalt (these show even
+	# where the renderer has run out of lights for a big piece of ground)
+	var top: Vector3 = l.light.global_position
+	var r: Dictionary = get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(top, top - Vector3(0, 12, 0), WORLD_LAYER))
+	var floor_y: float = r.position.y if not r.is_empty() else 0.0
+	var h: float = top.y - floor_y - 0.25
+	var cone := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.25
+	cm.bottom_radius = 3.4
+	cm.height = h
+	cm.radial_segments = 16
+	cm.cap_top = false
+	cm.cap_bottom = false
+	cone.mesh = cm
+	var cmat := StandardMaterial3D.new()
+	cmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	cmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	cmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	cmat.albedo_color = Color(1.0, 0.62, 0.3, 0.0)
+	cone.material_override = cmat
+	cone.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(cone)
+	cone.global_position = Vector3(top.x, floor_y + 0.25 + h / 2.0, top.z)
+	var patch := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2(7.5, 7.5)
+	patch.mesh = qm
+	var pmat := StandardMaterial3D.new()
+	pmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	pmat.albedo_texture = _glow_tex
+	pmat.albedo_color = Color(1.0, 0.65, 0.35, 0.0)
+	patch.material_override = pmat
+	patch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(patch)
+	patch.global_position = Vector3(top.x, floor_y + 0.04, top.z)
+	patch.rotation = Vector3(-PI / 2, 0, 0)
+	l["cone_mat"] = cmat
+	l["patch_mat"] = pmat
+
+## the street lamps surge brighter one after another, with a buzz and a stutter (sodium lamps warming up)
+func street_surge(delay := 0.0) -> void:
+	var st: Array = lamps.filter(func(l): return l.street)
+	for i in st.size():
+		var l = st[i]
+		get_tree().create_timer(delay + i * 0.35, true, false, true).timeout.connect(func():
+			if audio_cb.is_valid():
+				audio_cb.call(l.light.global_position)
+			var tw := create_tween()
+			var setb := func(v: float): l.boost = v
+			var prev := 1.0
+			for k in [0.3, 1.6, 0.5, 2.1, 1.4, 2.4]:
+				tw.tween_method(setb, prev, k, 0.07)
+				prev = k
+			tw.tween_method(setb, prev, 2.3, 0.4))
+
+var audio_cb := Callable()
+
 ## lamps come back on one by one, nearest the breaker first (or all at once)
 func power_on(from: Vector3, stagger := 0.0) -> void:
 	powered = true
+	street_surge(0.4 if stagger > 0 else 0.0)
 	var order := lamps.duplicate()
 	order.sort_custom(func(a, b): return a.light.global_position.distance_to(from) < b.light.global_position.distance_to(from))
 	for i in order.size():

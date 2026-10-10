@@ -6,7 +6,7 @@ const ZOMBIE_BODY := 2
 const HITBOX := 4
 const GRAVITY := 22.0
 const REACH := 1.2
-const VTYPE := {"walker": ["deep", "hoarse"], "runner": ["wheeze"], "armored": ["deep"], "bloater": ["wet"], "spitter": ["wet"], "boss": ["deep"], "monitor": ["wheeze"]}
+const VTYPE := {"walker": ["deep", "hoarse"], "runner": ["wheeze"], "armored": ["deep"], "bloater": ["wet"], "spitter": ["wet"], "boss": ["deep"], "monitor": ["wheeze"], "mascot": ["hoarse"]}
 const BOSS_SCALE := {"coach": 1.8, "principal": 1.55, "chem": 1.5, "lunch": 1.75}
 const KITCHEN := Vector3(-8, 0, 2.5)
 
@@ -93,11 +93,18 @@ var charge_dir := Vector3.ZERO
 var always_enraged := false
 # death
 var ct := 0.0
+# the Wildcats mascot
+var costume_hp := 0.0
+var cat_head: MeshInstance3D
+var pounce_t := 0.0
+var pounce_cd := 3.0
+var pounce_v := Vector3.ZERO
+var chant_t := 4.0
+const CHANTS := ["GIVE ME A W! GIVE ME AN I! ...GIVE ME YOUR BRAIN!", "GO! FIGHT! EAT!", "WE'VE GOT SPIRIT, YES WE DO!",
+	"TWO, FOUR, SIX, EIGHT, WHO DO WE MASTICATE?", "BE AGGRESSIVE! B-E AGGRESSIVE!", "WILDCATS NEVER DIE! (MOSTLY)"]
 # silly hats
 var hat: MeshInstance3D
 # power-ups and traps
-var freeze_t := 0.0           # Snow Day: frozen solid
-var flee_t := 0.0             # Fire Drill: walking away from the player
 var tint_mat = null           # overlay that replaces the skin overlay (ice, char)
 var charred := false          # fried by the shock gate: the ragdoll stays black
 var zap_t := 0.0              # shock gate cooldown per zombie
@@ -112,7 +119,7 @@ func setup(g, k: String, pos: Vector3, wave: int, boss_type := "") -> void:
 	var want_look := ""
 	if kind == "boss":
 		want_look = {"coach": "janitor", "lunch": "lunch"}.get(bt, "teacher")
-	elif kind == "monitor":
+	elif kind == "monitor" or kind == "mascot":
 		want_look = "student"
 	if want_look != "":
 		for i in game.world.data.zombie_samples.size():
@@ -176,6 +183,8 @@ func setup(g, k: String, pos: Vector3, wave: int, boss_type := "") -> void:
 		_dress_boss()
 	elif kind == "monitor":
 		_dress_monitor()
+	elif kind == "mascot":
+		_dress_mascot()
 	elif kind in ["walker", "runner", "spitter", "bloater"] and randf() < 0.22:
 		_hat(["grad", "helmet", "beanie", "dunce", "hairnet"][randi() % 5])
 	_hitboxes()
@@ -288,6 +297,74 @@ func _dress_boss() -> void:
 	shape.position.y = 0.85 * bscale
 	lean = 0.3 if bt == "coach" else (0.06 if bt == "principal" else (0.22 if bt == "lunch" else 0.15))
 
+## the Wildcats mascot: a full furry costume, a giant foam cat head, a jersey and a tail
+func _dress_mascot() -> void:
+	var fur := _hm(Color8(214, 150, 50))
+	var jersey := _hm(Color8(170, 26, 34))
+	for e in meshes:
+		if not is_instance_valid(e.n) or e.n.material_override == game.eye_mat:
+			continue
+		if e.head:
+			e.n.visible = false
+			continue
+		e.n.material_override = jersey if e.joint in ["spine", "core"] else fur
+	cat_head = MeshInstance3D.new()
+	var hb := BoxMesh.new()
+	hb.size = Vector3(0.56, 0.52, 0.52)
+	cat_head.mesh = hb
+	cat_head.material_override = fur
+	cat_head.position = Vector3(0, 0.2, 0.02)
+	joints["head"].add_child(cat_head)
+	var white := _hm(Color8(240, 236, 224))
+	var dark := _hm(Color8(25, 20, 18))
+	_hpart(cat_head, Vector3(0.32, 0.18, 0.12), Color8(240, 236, 224), Vector3(0, -0.12, 0.28))          # muzzle
+	_hpart(cat_head, Vector3(0.1, 0.07, 0.06), Color8(200, 80, 100), Vector3(0, -0.06, 0.35))   # nose
+	for x in [-0.13, 0.13]:
+		_hpart(cat_head, Vector3(0.13, 0.13, 0.03), Color8(240, 236, 224), Vector3(x, 0.06, 0.265))      # big cartoon eyes
+		_hpart(cat_head, Vector3(0.06, 0.08, 0.03), Color8(25, 20, 18), Vector3(x * 0.9, 0.05, 0.28))
+		var ear := _hpart(cat_head, Vector3(0.14, 0.18, 0.08), Color8(214, 150, 50), Vector3(x * 1.5, 0.32, 0.0))
+		ear.rotation.z = -x * 2.0
+		_hpart(ear, Vector3(0.08, 0.11, 0.09), Color8(240, 170, 160), Vector3(0, -0.01, 0.0))
+	_hpart(cat_head, Vector3(0.36, 0.03, 0.03), Color8(25, 20, 18), Vector3(0, -0.2, 0.345))           # grin
+	for k in 3:
+		var w := _hpart(cat_head, Vector3(0.2, 0.012, 0.012), Color8(25, 20, 18), Vector3(-0.24, -0.1 + k * 0.04, 0.3))
+		w.rotation.z = -0.15 + k * 0.15
+		var w2 := _hpart(cat_head, Vector3(0.2, 0.012, 0.012), Color8(25, 20, 18), Vector3(0.24, -0.1 + k * 0.04, 0.3))
+		w2.rotation.z = 0.15 - k * 0.15
+	meshes.append({"n": cat_head, "joint": "head", "head": true, "armor": false})
+	# the number on the jersey and a fluffy tail
+	var num := Label3D.new()
+	num.text = "00"
+	num.font = load("res://assets/fonts/BlackOpsOne-Regular.ttf")
+	num.font_size = 64
+	num.pixel_size = 0.005
+	num.modulate = Color8(240, 236, 224)
+	num.outline_size = 0
+	num.position = Vector3(0, 0.25, 0.19)
+	joints["spine"].add_child(num)
+	var tail := _acc("core", Vector3(0.07, 0.07, 0.55), Color8(214, 150, 50), Vector3(0, 0.0, -0.4), false)
+	tail.rotation.x = -0.7
+	_acc("core", Vector3(0.1, 0.1, 0.12), Color8(240, 236, 224), Vector3(0, 0.2, -0.62), false)
+	vis.scale = Vector3.ONE * 1.08
+	arm_style = "run"
+
+## the foam head comes off with a headshot; after that the mascot takes full damage
+func _pop_cat_head(dir: Vector3) -> void:
+	if cat_head == null or not is_instance_valid(cat_head):
+		return
+	var h := cat_head
+	cat_head = null
+	costume_hp = 0.0
+	meshes = meshes.filter(func(e): return e.n != h)
+	for e in meshes:
+		if is_instance_valid(e.n) and e.head:
+			e.n.visible = true
+	var at: Vector3 = h.global_position
+	game.physics.gib(h, Vector3(dir.x * 3.0, 0, dir.z * 3.0) + Vector3(randf_range(-1.5, 1.5), 7.0, randf_range(-1.5, 1.5)), false)
+	game.audio.play("ploink", at, 4, 0.7)
+	game.audio.play("mascotRoar", at, 2, 1.3)
+	game.hud.callout_small("HEAD OFF!")
+
 ## school-themed hats. They pop off with a "ploink" when you shoot them in the head.
 func _hm(c: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -372,20 +449,6 @@ func _hat(style: String) -> void:
 	joints["head"].add_child(hat)
 	meshes.append({"n": hat, "joint": "head", "head": true, "armor": false})
 
-## Snow Day
-func freeze(dur: float) -> void:
-	if not alive:
-		return
-	freeze_t = dur
-	tint_mat = game.ice_mat
-	_overlay(false)
-
-func fire_drill(dur: float) -> void:
-	if not alive or kind == "boss":
-		return
-	flee_t = dur
-	sdir = -1.0 if randf() < 0.5 else 1.0
-
 ## a headshot sends the hat flying
 func _pop_hat(dir: Vector3) -> void:
 	if hat == null or not is_instance_valid(hat):
@@ -451,6 +514,11 @@ func _stats(w: int) -> void:
 			hp = (40 + w * 9) * 0.9
 			speed = walk * 0.85
 			dmg = 14 + w * 0.5
+		"mascot":
+			hp = 60 + w * 8
+			costume_hp = 70 + w * 9
+			speed = minf(5.4 + w * 0.08, 7.4) * randf_range(0.95, 1.05)
+			dmg = 15 + w * 0.6
 		"monitor":
 			hp = 25 + w * 5
 			speed = minf(4.6 + w * 0.1, 6.5) * randf_range(0.9, 1.1)
@@ -533,6 +601,17 @@ func damage(amount: float, zone: String, dir: Vector3, power: float, blast := fa
 			amount *= 0.25
 		if blast:
 			amount *= 0.6
+	if kind == "mascot" and cat_head != null:
+		if head and not blast:
+			_pop_cat_head(dir)
+			amount *= 1.5
+		else:
+			# the costume's padding soaks most of it
+			costume_hp -= amount
+			if costume_hp > 0:
+				amount *= 0.35
+			else:
+				_pop_cat_head(dir)
 	if head and not blast:
 		amount *= 2.2
 		if hat != null:
@@ -670,30 +749,8 @@ func _physics_process(dt: float) -> void:
 	var p = game.player
 	var want := Vector3.ZERO
 	zap_t = maxf(0.0, zap_t - dt)
-	# Snow Day: frozen solid (still shootable)
-	if freeze_t > 0.0:
-		freeze_t -= dt
-		if freeze_t <= 0.0:
-			tint_mat = null
-			_overlay(false)
-			game.fx.burst(global_position + Vector3(0, 1.2, 0), Vector3.UP, 6, Color(0.8, 0.9, 1.0), 2.5, 0.05, 0.5)
-		velocity.x = 0
-		velocity.z = 0
-		velocity.y -= GRAVITY * dt
-		move_and_slide()
-		return
-	flee_t = maxf(0.0, flee_t - dt)
 	if emerge > 0:
 		emerge -= dt
-	elif p and not p.dead and flee_t > 0.0:
-		# Fire Drill: single file, away from the student
-		var away: Vector3 = global_position - p.global_position
-		away.y = 0
-		want = away.normalized() if away.length() > 0.01 else Vector3.FORWARD
-		if is_on_wall():
-			var n := get_wall_normal()
-			n.y = 0
-			want = (want + n.normalized().cross(Vector3.UP) * sdir).normalized()
 	elif p and not p.dead and kind == "boss" and (hold_t > 0.0 or charge_t > 0.0):
 		# boss moves: a wind-up, then the Coach's charge or the Lunch Lady's ground pound
 		var to2: Vector3 = p.global_position - global_position
@@ -718,6 +775,7 @@ func _physics_process(dt: float) -> void:
 			if Vector2(to2.x, to2.z).length() < reach + 0.4 and absf(to2.y) < 2.0:
 				charge_t = 0.0
 				p.velocity += charge_dir * 20.0 + Vector3(0, 6, 0)
+				game.last_attacker = self
 				p.hurt(dmg * 1.1)
 				game.bosses.event(self, "hit")
 				game.audio.play("kickHit", p.global_position, 6, 0.6)
@@ -745,6 +803,7 @@ func _physics_process(dt: float) -> void:
 							away.y = 0
 							p.velocity += away.normalized() * 14.0 + Vector3(0, 2, 0)
 							game.bosses.event(self, "hit")
+						game.last_attacker = self
 						p.hurt(dmg))
 		elif bmode == 1:
 			_face(to)
@@ -752,6 +811,15 @@ func _physics_process(dt: float) -> void:
 		elif bmode == 2:
 			_face(to)
 			want = Vector3(to.x, 0, to.z).normalized().cross(Vector3.UP) * sdir
+		elif kind == "mascot" and not crawler and pounce_cd <= 0 and dist > 3.0 and dist < 8.5 and dy < 1.0 and stagger <= 0 and _los(p):
+			# the mascot pounces
+			pounce_cd = randf_range(3.5, 5.0)
+			pounce_t = 0.6
+			pounce_v = Vector3(to.x, 0, to.z).normalized() * minf(dist * 1.9, 12.0)
+			velocity.y = 6.0
+			lunge = 1.0
+			_face(to)
+			game.audio.play("mascotHup", global_position + Vector3(0, 1.6, 0), 4, randf_range(0.95, 1.1))
 		elif kind == "monitor" and dist < 20 and whistle_cd <= 0 and _los(p):
 			_face(to)
 			_blow_whistle(p)
@@ -761,7 +829,7 @@ func _physics_process(dt: float) -> void:
 			_face(to)
 			get_tree().create_timer(0.55).timeout.connect(func():
 				if alive and is_instance_valid(p):
-					game.spit(joints["head"].global_position, p))
+					game.spit(joints["head"].global_position, p, self))
 		elif kind == "spitter" and not crawler and dist < 11 and _los(p):
 			_face(to)
 			want = global_transform.basis.x * sin(t * 0.8 + pitch * 10.0) * 0.5
@@ -775,7 +843,7 @@ func _physics_process(dt: float) -> void:
 	var push := Vector3.ZERO
 	var room := 0.8 * maxf(bscale, 1.0)
 	for o in game.zombies:
-		if o == self or not o.alive or o.freeze_t > 0:
+		if o == self or not o.alive:
 			continue
 		var d: Vector3 = global_position - o.global_position
 		if absf(d.y) > 1.5:
@@ -789,6 +857,24 @@ func _physics_process(dt: float) -> void:
 		want = (want + push * 2.2).limit_length(1.0)
 	velocity.x = move_toward(velocity.x, want.x * spd, 20.0 * dt)
 	velocity.z = move_toward(velocity.z, want.z * spd, 20.0 * dt)
+	if kind == "mascot":
+		pounce_cd -= dt
+		if pounce_t > 0.0:
+			pounce_t -= dt
+			velocity.x = pounce_v.x
+			velocity.z = pounce_v.z
+			if p and not p.dead and global_position.distance_to(p.global_position) < 1.3:
+				pounce_t = 0.0
+				game.last_attacker = self
+				p.velocity += pounce_v.normalized() * 6.0
+				p.hurt(dmg * 1.2)
+				game.audio.play("kickHit", p.global_position, 2, 1.2)
+		chant_t -= dt
+		if chant_t <= 0.0:
+			chant_t = randf_range(8.0, 13.0)
+			if p and global_position.distance_to(p.global_position) < 18.0 and alive:
+				game.hud.callout_small(CHANTS[randi() % CHANTS.size()])
+				game.audio.play("mascotRoar", global_position + Vector3(0, 1.8, 0), 2, randf_range(0.95, 1.1))
 	velocity.y -= GRAVITY * dt
 	var hv := Vector3(velocity.x, 0, velocity.z)
 	move_and_slide()

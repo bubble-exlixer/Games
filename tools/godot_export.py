@@ -160,6 +160,21 @@ def add_f(g, name, P, N, U, I, look, png):
     g.nodes.append({'name': name, 'mesh': len(g.meshes) - 1, 'translation': [float(v) * g.scale for v in cen]})
     return True
 
+# retired wall-buy displays (the .357 on the cafeteria stage, the AK in the gym): drop the gun, chalk and price
+# that sat on the wall. Only small pieces lying flat against the wall inside the display's box go.
+RETIRED = [((-7.0, 2.4, -15.62), 2), ((-59.7, 1.6, -12.0), 0)]     # show position, wall-normal axis (0=x, 2=z)
+for (sx, sy, sz), ax in RETIRED:
+    c = np.array([sx, sy, sz]) * K
+    half = np.array([1.1, 0.9, 1.1]) * K; half[ax] = 0.45 * K
+    gone = 0
+    for w in WM:
+        P, I = w['P'], w['I']
+        tri = P[I]
+        inside = np.all(np.all(np.abs(tri - c) < half, axis=2), axis=1)
+        if inside.any():
+            w['I'] = I[~inside]; gone += int(inside.sum())
+    print('retired wall-buy display at', (sx, sy, sz), 'triangles removed:', gone)
+
 # the school bus becomes its own model so the escape cutscene can drive it away
 BUS_LO = np.array([25.9, 0.06, 25.3]) * K; BUS_HI = np.array([39.95, 3.5, 28.75]) * K
 gb = GL.GLB(1 / K); nb = 0
@@ -318,48 +333,55 @@ W['slip'] = {'name': 'DETENTION SLIP', 'mag': 3, 'rate': 0.8, 'dmg': 0, 'pellets
 W['bat'] = {'name': 'WILDCATS BAT', 'mag': 1, 'rate': 0.5, 'dmg': 150, 'pellets': 1, 'spread': 0.0, 'reload': 0.1, 'kick': 0.0, 'pierce': 0,
     'bloom': 0.0, 'bloomMax': 0.0, 'auto': True, 'flash': [0.0, 0.0, 0.0], 'ads_zoom': 1.0, 'ads_y': -0.27, 'ads_x': 0.27, 'power': 6,
     'box_reserve': -1, 'reload_snd': 'reload', 'shot_snd': 'batSwing', 'melee': True}
+# Volcano Launcher: lobs baking-soda volcanoes that erupt into slowing, fizzing foam
+W['volc'] = {'name': 'VOLCANO LAUNCHER', 'mag': 3, 'rate': 0.85, 'dmg': 60, 'pellets': 1, 'spread': 0.0, 'reload': 2.4, 'kick': 1.2, 'pierce': 0,
+    'bloom': 0.0, 'bloomMax': 0.0, 'auto': False, 'flash': [0.0, 0.08, -0.5], 'ads_zoom': 1.15, 'ads_y': -0.1, 'ads_x': 0.0, 'power': 6,
+    'box_reserve': 36, 'reload_snd': 'reload', 'shot_snd': 'shot_volc', 'proj': 'volc'}
 data['box_pool'] += ['book', 'dodge', 'slip', 'bat']
 # Pack-a-Punch upgrades (the web game's names; magazines and reserves scaled to this port's doubled ammo)
 UP = {'pistol': ('MR. BLACK', 18, -1), 'shotgun': ('GRAVEDIGGER', 8, 54), 'ak': ('RED HAND', 45, 360), 'revolver': ('THE JUDGE', 8, 108), 'dmr': ('LONG GOODBYE', 15, 180),
       'smg': ('HORNET NEST', 48, 480), 'lmg': ('IRON CHOIR', 150, 600), 'sawed': ('DOUBLE TROUBLE', 4, 72), 'flamer': ('HELLMOUTH', 180, 1200),
       'xbow': ('WIDOWMAKER', 3, 60), 'bayonet': ('LAST RITES', 8, 128), 'staple': ('STAPLE STORM', 60, 540),
-      'book': ('THE ENCYCLOPEDIA', 6, 60), 'dodge': ('DOUBLEMINT DODGE', 8, 64), 'bone': ('SEVENTY-SIX TROMBONES', 14, 84), 'slip': ('SUSPENSION', 4, 0), 'bat': ('GRAND SLAM', 1, -1)}
+      'book': ('THE ENCYCLOPEDIA', 6, 60), 'dodge': ('DOUBLEMINT DODGE', 8, 64), 'bone': ('SEVENTY-SIX TROMBONES', 14, 84), 'slip': ('SUSPENSION', 4, 0), 'bat': ('GRAND SLAM', 1, -1), 'volc': ('MOUNT VESUVIUS', 5, 50)}
 for wid, (nm, mg, rs) in UP.items():
     data['weapons'][wid].update({'up_name': nm, 'up_mag': mg, 'up_reserve': rs})
 # upstairs wall-buys: library, lab, office
+data['wallbuys'] = [w for w in data['wallbuys'] if w['id'] not in ('revolver', 'ak')]   # .357 and AK are box-only now
 data['wallbuys'] += [
     {'id': 'bayonet', 'cost': 1600, 'ammo': 800, 'reserve': 60, 'spot': [-34.4, 4.0, -34.5], 'show': [-35.72, 5.5, -34.5], 'face': [1, 0, 0], 'built': True},
-    {'id': 'smg', 'cost': 1500, 'ammo': 750, 'reserve': 320, 'spot': [-8.0, 4.0, -42.4], 'show': [-8.0, 5.5, -43.72], 'face': [0, 0, 1], 'built': True},
+    {'id': 'volc', 'cost': 1750, 'ammo': 875, 'reserve': 36, 'spot': [-8.0, 4.0, -42.4], 'show': [-8.0, 5.5, -43.72], 'face': [0, 0, 1], 'built': True, 'board': 'science'},
     {'id': 'staple', 'cost': 2000, 'ammo': 1000, 'reserve': 360, 'spot': [7.5, 4.0, -42.4], 'show': [7.5, 5.5, -43.72], 'face': [0, 0, 1], 'built': True},
     {'id': 'bone', 'cost': 1200, 'ammo': 600, 'reserve': 60, 'spot': [19.5, 4.0, -42.4], 'show': [19.5, 5.5, -43.72], 'face': [0, 0, 1], 'built': True},
-    {'id': 'bat', 'cost': 1250, 'ammo': 0, 'reserve': -1, 'spot': [11.8, 0.0, 16.6], 'show': [11.8, 1.6, 15.28], 'face': [0, 0, 1], 'built': True},
+    {'id': 'bat', 'cost': 1250, 'ammo': 0, 'reserve': -1, 'spot': [-7.0, 0.9, -14.2], 'show': [-7.0, 2.2, -15.6], 'face': [0, 0, 1], 'built': True},
     {'id': 'dodge', 'cost': 1400, 'ammo': 700, 'reserve': 48, 'spot': [-55.0, 0.0, 4.3], 'show': [-55.0, 1.6, 5.62], 'face': [0, 0, -1], 'built': True},
 ]
 data['floors'] = [e for e in data['floors'] if not _cut(e)]
 json.dump(data, open(os.path.join(PROJ, 'data/map.json'), 'w'), separators=(',', ':'))
 
 # ---------------------------------------------------------------- audio (one .ogg per sound)
-AU = os.path.join(SP, 'roblox', 'audio'); SR = 44100
-meta = json.load(open(os.path.join(AU, 'meta.json')))
-def load(nm): return np.frombuffer(open(os.path.join(AU, nm + '.pcm'), 'rb').read(), dtype=np.int16).reshape(-1, 2).astype(np.float32) / 32767
-def ogg(a, path):
-    raw = (np.clip(a, -1, 1) * 32767).astype(np.int16).tobytes()
-    subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 's16le', '-ar', str(SR), '-ac', '2', '-i', '-', '-c:a', 'libvorbis', '-q:a', '5', path], input=raw, check=True)
+# re-encoding makes new bytes every time, so audio is only rebuilt when asked: EXPORT_AUDIO=1
 nsfx = 0
-for f in sorted(G.glob(os.path.join(AU, '*.pcm'))):
-    nm = os.path.basename(f)[:-4]
-    if nm.startswith('music_') or nm == 'ambience': continue
-    a = load(nm); env = np.abs(a).max(1); nz = np.where(env > 0.002)[0]
-    if not len(nz): continue
-    end = min(len(a), nz[-1] + int(0.06 * SR), int(3.0 * SR)); a = a[:end].copy(); fl = min(len(a), int(0.03 * SR)); a[-fl:] *= np.linspace(1, 0, fl)[:, None]
-    ogg(a, os.path.join(PROJ, 'assets/audio/sfx', nm + '.ogg')); nsfx += 1
-for nm, mt in meta.items():
-    if mt['kind'] != 'music': continue
-    a = load(nm); s0 = int(mt['start'] * SR); L = int(mt['loop'] * SR)
-    body = a[s0:s0 + L].copy(); tail = a[s0 + L:]; t = min(len(tail), L); body[:t] += tail[:t]
-    ogg(body, os.path.join(PROJ, 'assets/audio/music', nm[6:] + '.ogg'))
-a = load('ambience'); s0 = 2 * SR; L = 28 * SR; Xf = 2 * SR
-body = a[s0:s0 + L].copy(); over = a[s0 + L:s0 + L + Xf]; k = np.linspace(0, 1, Xf)[:, None]
-body[:Xf] = body[:Xf] * np.sqrt(k) + over * np.sqrt(1 - k)
-ogg(body, os.path.join(PROJ, 'assets/audio/music', 'ambience.ogg'))
+if os.environ.get('EXPORT_AUDIO'):
+    AU = os.path.join(SP, 'roblox', 'audio'); SR = 44100
+    meta = json.load(open(os.path.join(AU, 'meta.json')))
+    def load(nm): return np.frombuffer(open(os.path.join(AU, nm + '.pcm'), 'rb').read(), dtype=np.int16).reshape(-1, 2).astype(np.float32) / 32767
+    def ogg(a, path):
+        raw = (np.clip(a, -1, 1) * 32767).astype(np.int16).tobytes()
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-f', 's16le', '-ar', str(SR), '-ac', '2', '-i', '-', '-c:a', 'libvorbis', '-q:a', '5', path], input=raw, check=True)
+    for f in sorted(G.glob(os.path.join(AU, '*.pcm'))):
+        nm = os.path.basename(f)[:-4]
+        if nm.startswith('music_') or nm == 'ambience': continue
+        a = load(nm); env = np.abs(a).max(1); nz = np.where(env > 0.002)[0]
+        if not len(nz): continue
+        end = min(len(a), nz[-1] + int(0.06 * SR), int(3.0 * SR)); a = a[:end].copy(); fl = min(len(a), int(0.03 * SR)); a[-fl:] *= np.linspace(1, 0, fl)[:, None]
+        ogg(a, os.path.join(PROJ, 'assets/audio/sfx', nm + '.ogg')); nsfx += 1
+    for nm, mt in meta.items():
+        if mt['kind'] != 'music': continue
+        a = load(nm); s0 = int(mt['start'] * SR); L = int(mt['loop'] * SR)
+        body = a[s0:s0 + L].copy(); tail = a[s0 + L:]; t = min(len(tail), L); body[:t] += tail[:t]
+        ogg(body, os.path.join(PROJ, 'assets/audio/music', nm[6:] + '.ogg'))
+    a = load('ambience'); s0 = 2 * SR; L = 28 * SR; Xf = 2 * SR
+    body = a[s0:s0 + L].copy(); over = a[s0 + L:s0 + L + Xf]; k = np.linspace(0, 1, Xf)[:, None]
+    body[:Xf] = body[:Xf] * np.sqrt(k) + over * np.sqrt(1 - k)
+    ogg(body, os.path.join(PROJ, 'assets/audio/music', 'ambience.ogg'))
 print('map tiles', n, 'samples', len(samples), 'sfx', nsfx, 'floors', len(floors), 'collision', len(data['collision']))

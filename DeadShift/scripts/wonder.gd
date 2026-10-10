@@ -41,6 +41,8 @@ func fire(wd: Dictionary, origin: Vector3, dir: Vector3, muzzle: Vector3) -> voi
 			_spawn("dodge", muzzle, dir * 27.0, wd, up)
 		"slip":
 			_spawn("slip", muzzle, dir * 30.0, wd, up)
+		"volc":
+			_spawn("volc", muzzle, dir * 19.0 + Vector3(0, 3.0, 0), wd, up)
 
 func _spawn(kind: String, at: Vector3, v: Vector3, wd: Dictionary, up: bool) -> void:
 	var m := MeshInstance3D.new()
@@ -73,6 +75,21 @@ func _spawn(kind: String, at: Vector3, v: Vector3, wd: Dictionary, up: bool) -> 
 				l.omni_range = 2.0
 				l.light_energy = 0.8
 				m.add_child(l)
+		"volc":
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.03
+			cm.bottom_radius = 0.13
+			cm.height = 0.16
+			cm.radial_segments = 8
+			m.mesh = cm
+			var vm := StandardMaterial3D.new()
+			vm.albedo_color = Color8(120, 92, 60)
+			m.material_override = vm
+			var l := OmniLight3D.new()
+			l.light_color = Color8(255, 120, 40)
+			l.omni_range = 2.0
+			l.light_energy = 0.8
+			m.add_child(l)
 		"slip":
 			var q := QuadMesh.new()
 			q.size = Vector2(0.2, 0.12)
@@ -114,13 +131,14 @@ func _process(dt: float) -> void:
 	if game == null:
 		return
 	wah_cd -= dt
+	_step_foam(dt)
 	var space := get_world_3d().direct_space_state
 	var i := shots.size() - 1
 	while i >= 0:
 		var s = shots[i]
 		s.t += dt
 		var m: MeshInstance3D = s.n
-		var g := 11.0 if s.kind == "book" else (5.0 if s.kind == "dodge" else 0.0)
+		var g := 11.0 if s.kind == "book" or s.kind == "volc" else (5.0 if s.kind == "dodge" else 0.0)
 		s.v.y -= g * dt
 		var from := m.global_position
 		var to: Vector3 = from + s.v * dt
@@ -203,6 +221,10 @@ func _hit_zombie(s: Dictionary, z, at: Vector3) -> bool:
 		"slip":
 			_detention(z, s.up, at)
 			return true
+		"volc":
+			z.damage(s.dmg, "body", dir, 4.0, false, at)
+			erupt(z.global_position, s.dmg, s.up)
+			return true
 	return true
 
 func _hit_world(s: Dictionary, r: Dictionary) -> bool:
@@ -240,7 +262,88 @@ func _hit_world(s: Dictionary, r: Dictionary) -> bool:
 		"slip":
 			game.fx.puff(at, Color8(240, 240, 236), false, 0.05, 0.3, 0.4, 0.2, 0.05, 0.5)
 			return true
+		"volc":
+			erupt(r.position, s.dmg, s.up)
+			return true
 	return true
+
+# ---------------------------------------------------------------- Volcano Launcher foam
+var foams: Array = []      # {pos, r, t, tick, dmg, up, n (node), mat}
+var foam_mat: StandardMaterial3D
+
+## a baking-soda eruption: a fizzing foam puddle that slows and eats away at zombies. Puddles that touch merge.
+func erupt(at: Vector3, dmg: float, up: bool) -> void:
+	var y: float = game._floor_y(at + Vector3(0, 0.3, 0))
+	var p := Vector3(at.x, y, at.z)
+	game.audio.play("erupt", p, 4, randf_range(0.9, 1.1))
+	for k in 6:
+		game.fx.puff(p + Vector3(randf_range(-0.3, 0.3), 0.2, randf_range(-0.3, 0.3)), Color8(240, 236, 220) if k % 2 else Color8(255, 150, 70), false, 0.15, randf_range(0.6, 1.1), 0.7, randf_range(1.0, 2.2), 0.3, 0.8)
+	game.fx.spray(p + Vector3(0, 0.2, 0), Vector3.UP, Color8(255, 120, 40), 12, 5, 0.6)
+	var r0 := 2.1 if up else 1.6
+	for f in foams:
+		if Vector2(f.pos.x - p.x, f.pos.z - p.z).length() < f.r + r0 * 0.8 and absf(f.pos.y - p.y) < 1.0:
+			# merge into the puddle it touches: it grows and lasts longer
+			f.r = minf(f.r + 0.45, 4.2)
+			f.t = maxf(f.t, 6.5 if not up else 9.0)
+			f.dmg = maxf(f.dmg, dmg)
+			f.up = f.up or up
+			f.n.scale = Vector3(f.r, 1, f.r)
+			return
+	if foam_mat == null:
+		foam_mat = StandardMaterial3D.new()
+		foam_mat.albedo_color = Color(0.94, 0.93, 0.86, 0.92)
+		foam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		foam_mat.roughness = 1.0
+	var n := Node3D.new()
+	game.world.add_child(n)
+	n.global_position = p + Vector3(0, 0.03, 0)
+	for k in 5:
+		var b := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = randf_range(0.35, 0.55)
+		sm.height = sm.radius * 0.5
+		sm.radial_segments = 10
+		sm.rings = 4
+		b.mesh = sm
+		b.material_override = foam_mat
+		var a := randf() * TAU
+		var rr := 0.0 if k == 0 else randf_range(0.3, 0.6)
+		b.position = Vector3(cos(a) * rr, 0.02, sin(a) * rr)
+		b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		n.add_child(b)
+	n.scale = Vector3(r0, 1, r0)
+	foams.append({"pos": p, "r": r0, "t": 6.5 if not up else 9.0, "tick": 0.0, "dmg": dmg, "up": up, "n": n})
+
+func _step_foam(dt: float) -> void:
+	var i := foams.size() - 1
+	while i >= 0:
+		var f = foams[i]
+		f.t -= dt
+		f.tick -= dt
+		var k: float = clampf(f.t / 1.2, 0.0, 1.0)
+		f.n.scale = Vector3(f.r * (0.6 + 0.4 * k), k, f.r * (0.6 + 0.4 * k))
+		if randf() < dt * 8.0:
+			var a := randf() * TAU
+			var rr: float = randf() * f.r * 0.8
+			game.fx.puff(f.pos + Vector3(cos(a) * rr, 0.15, sin(a) * rr), Color8(255, 140, 60) if f.up and randf() < 0.5 else Color8(245, 242, 230), f.up, 0.08, 0.3, 0.6, 0.6, 0.05, 0.7)
+		if f.tick <= 0:
+			f.tick = 0.4
+			for z in game.zombies:
+				if not z.alive:
+					continue
+				var d: Vector3 = z.global_position - f.pos
+				if absf(d.y) > 1.2 or Vector2(d.x, d.z).length() > f.r:
+					continue
+				z.slow_t = maxf(z.slow_t, 0.6)
+				var res: Dictionary = z.damage(f.dmg * (0.4 if f.up else 0.25) * (0.4 if z.kind == "boss" else 1.0), "body", Vector3.UP, 1.0, false, z.global_position + Vector3(0, 0.4, 0))
+				if res.get("kill", false):
+					game.hud.hit(true)
+			if randf() < 0.3:
+				game.audio.play("fizz", f.pos, -10, randf_range(1.2, 1.6))
+		if f.t <= 0:
+			f.n.queue_free()
+			foams.remove_at(i)
+		i -= 1
 
 func _score(res: Dictionary) -> void:
 	game.hud.hit(res.get("kill", false))
@@ -315,8 +418,9 @@ func _cone(wd: Dictionary, origin: Vector3, dir: Vector3, muzzle: Vector3, up: b
 	game.player.shake = maxf(game.player.shake, 0.08)
 	if hits > 0:
 		game.hud.hit(kills > 0)
-	if kills > 0 and wah_cd <= 0:
-		wah_cd = 3.0
+	# the sad trombone is a reward for a massacre, not every kill
+	if kills >= 3 and wah_cd <= 0:
+		wah_cd = 12.0
 		game.audio.play("wahwah", null, -2)
 		if kills >= 3:
 			game.callout("SAD TROMBONE", "+%d" % (kills * 25))

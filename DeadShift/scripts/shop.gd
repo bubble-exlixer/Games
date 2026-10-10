@@ -70,6 +70,67 @@ func _display(wb: Dictionary) -> void:
 	o.light_energy = 1.2
 	o.position = Vector3(0, 0.5, 0.6)
 	root.add_child(o)
+	if wb.get("board", "") == "science":
+		_science_board(root)
+
+## a science-fair trifold poster board, with a title and a blue first-place ribbon
+func _science_board(root: Node3D) -> void:
+	var card := StandardMaterial3D.new()
+	card.albedo_color = Color8(236, 234, 226)
+	card.roughness = 1.0
+	var w := [0.62, 0.82, 0.62]
+	for i in 3:
+		var p := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(w[i], 0.95, 0.015)
+		p.mesh = b
+		p.material_override = card
+		var x: float = [-0.66, 0.0, 0.66][i]
+		p.position = Vector3(x, 0.12, -0.01 if i == 1 else 0.09)
+		p.rotation.y = [0.45, 0.0, -0.45][i]
+		root.add_child(p)
+	for i in 4:
+		var strip := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(0.36, 0.2, 0.004)
+		strip.mesh = sb
+		var sm := StandardMaterial3D.new()
+		sm.albedo_color = [Color8(255, 210, 120), Color8(160, 220, 255), Color8(255, 170, 170), Color8(190, 240, 170)][i]
+		strip.material_override = sm
+		strip.position = Vector3(-0.66 if i < 2 else 0.66, 0.32 - (i % 2) * 0.35, 0.1)
+		strip.rotation.y = 0.45 if i < 2 else -0.45
+		strip.position += Vector3(0.04 if i < 2 else -0.04, 0, 0.0125)
+		root.add_child(strip)
+	var t := Label3D.new()
+	t.text = "MY VOLCANO\nby Kyle"
+	t.font = load("res://assets/fonts/BlackOpsOne-Regular.ttf")
+	t.font_size = 44
+	t.pixel_size = 0.004
+	t.modulate = Color8(200, 60, 30)
+	t.outline_size = 0
+	t.position = Vector3(0, 0.46, 0.0)
+	root.add_child(t)
+	var rib := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.07
+	cm.bottom_radius = 0.07
+	cm.height = 0.01
+	rib.mesh = cm
+	var rm := StandardMaterial3D.new()
+	rm.albedo_color = Color8(30, 70, 200)
+	rib.material_override = rm
+	rib.rotation.x = PI / 2
+	rib.position = Vector3(0.3, -0.2, 0.0)
+	root.add_child(rib)
+	for s in [-1, 1]:
+		var tail := MeshInstance3D.new()
+		var tb := BoxMesh.new()
+		tb.size = Vector3(0.05, 0.16, 0.006)
+		tail.mesh = tb
+		tail.material_override = rm
+		tail.position = Vector3(0.3 + s * 0.03, -0.32, -0.002)
+		tail.rotation.z = s * 0.25
+		root.add_child(tail)
 
 # ---------------------------------------------------------------- Pack-a-Punch
 func _pap_machine() -> void:

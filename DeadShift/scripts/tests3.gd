@@ -132,35 +132,13 @@ func _power() -> void:
 	game.state = "play"
 	game.to_spawn = 0
 	m._look_at(Vector3(0, 0.05, 11), Vector3(0, 1.2, 4))
-	for i in 3:
-		game.silly.drop(["snow", "drill", "free"][i], Vector3(-2.5 + i * 2.5, 0, 7.5))
+	game.silly.drop("free", Vector3(0, 0, 7.5))
 	await wait(0.6)
 	await snap("powerups")
 	for p in game.pickups.duplicate():
 		if p.type.begins_with("pw_"):
 			p.n.queue_free()
 			game.pickups.erase(p)
-	var zs := []
-	for i in 6:
-		zs.append(zombie("walker", Vector3(-4 + i * 1.6, 0.05, 3.0)))
-	await wait(0.8)
-	game.silly.activate("snow")
-	var p0: Vector3 = zs[0].global_position
-	await wait(1.0)
-	print("snow: frozen=", zs[0].freeze_t > 0, " moved=", zs[0].global_position.distance_to(p0))
-	await snap("snowday")
-	await wait(4.6)
-	game.silly.activate("drill")
-	await wait(1.5)
-	var away := 0
-	for z in zs:
-		var to: Vector3 = player.global_position - z.global_position
-		if z.velocity.dot(to) < 0:
-			away += 1
-	print("fire drill: walking away ", away, "/", zs.size())
-	await snap("firedrill")
-	await wait(5.0)
-	clear()
 	game.silly.activate("free")
 	var mag: int = player.slots[player.cur].mag
 	for i in 5:
@@ -570,6 +548,197 @@ func _bat() -> void:
 	await snap("bat_after")
 	clear()
 	game.state = "stage"
+
+# ---------------------------------------------------------------- list 4
+func _walls4() -> void:
+	game.state = "play"
+	game.to_spawn = 0
+	game.points = 20000
+	for id in ["bat", "volc"]:
+		for wb in game.world.data.wallbuys:
+			if wb.id == id:
+				var sp := Vector3(wb.spot[0], wb.spot[1] + 0.05, wb.spot[2])
+				var show := Vector3(wb.show[0], wb.show[1], wb.show[2])
+				m._look_at(sp, show)
+				await wait(0.4)
+				print(id, " prompt: ", game.interact_target.get("text", ""))
+				m._look_at(sp + (sp - Vector3(show.x, sp.y, show.z)).normalized() * 1.6, show - Vector3(0, 0.25, 0))
+				await wait(0.4)
+				await snap("wall_" + id)
+	print("wall-buy ids: ", game.world.data.wallbuys.map(func(w): return w.id))
+	# the retired displays: stage and gym walls should be bare
+	m._look_at(Vector3(-7, 0.95, -12.5), Vector3(-7, 2.3, -15.6))
+	await wait(0.4)
+	await snap("stage_wall")
+	m._look_at(Vector3(-56.5, 0.05, -12), Vector3(-59.7, 1.6, -12))
+	await wait(0.4)
+	await snap("gym_ak_wall")
+	game.state = "stage"
+
+func _volc() -> void:
+	clear()
+	game.state = "play"
+	game.to_spawn = 0
+	player.give("volc", 36)
+	player.cur = player.owns("volc")
+	player.build_gun()
+	m._look_at(Vector3(-46, 0.05, 2), Vector3(-46, 0.5, -6))
+	var zs := []
+	for i in 6:
+		zs.append(zombie("walker", Vector3(-48 + (i % 3) * 2.0, 0.05, -5.5 - (i / 3) * 1.5), 5))
+	await wait(0.5)
+	await snap("volc_held")
+	for k in 3:
+		m._look_at(Vector3(-46, 0.05, 2), Vector3(-47.5 + k * 1.5, 0.3, -6))
+		await wait(0.1)
+		player.fire_t = 0
+		player.shoot()
+		await wait(0.9)
+	print("foam puddles: ", game.wonder.foams.size(), " radii: ", game.wonder.foams.map(func(f): return snappedf(f.r, 0.01)))
+	await snap("volc_foam")
+	await wait(3.0)
+	var down := 0
+	var slowed := 0
+	for z in zs:
+		if not is_instance_valid(z) or not z.alive:
+			down += 1
+		elif z.slow_t > 0:
+			slowed += 1
+	print("volcano: down ", down, "/6, slowed ", slowed)
+	await snap("volc_after")
+	clear()
+	game.state = "stage"
+
+func _mascot() -> void:
+	clear()
+	game.state = "play"
+	game.to_spawn = 0
+	game.wave = 8
+	m._look_at(Vector3(-46, 0.05, 4), Vector3(-46, 1.5, -6))
+	var z = zombie("mascot", Vector3(-46, 0.05, -6), 8)
+	await wait(0.2)
+	z.speed = 0.0
+	z.pounce_cd = 99.0
+	await wait(0.5)
+	await snap("mascot")
+	var hp0: float = z.hp
+	z.damage(40.0, "body", Vector3.FORWARD, 2.0)
+	print("mascot body hit 40 -> lost ", hp0 - z.hp, " (costume soaks), head on=", z.cat_head != null)
+	var hp1: float = z.hp
+	z.damage(10.0, "head", Vector3.FORWARD, 2.0, false, z.joints["head"].global_position)
+	print("headshot: head on=", z.cat_head != null, " lost ", hp1 - z.hp)
+	await wait(0.4)
+	await snap("mascot_headoff")
+	# pounce
+	z.speed = 6.0
+	z.pounce_cd = 0.0
+	var hp_p: float = player.hp
+	player.hp = 100
+	player.max_hp = 100
+	var start: Vector3 = z.global_position
+	await wait(0.3)
+	await snap("mascot_pounce")
+	await wait(1.0)
+	print("pounce: moved ", snappedf(z.global_position.distance_to(start), 0.1), " m, player hp ", player.hp)
+	player.hp = 1e9
+	player.max_hp = 1e9
+	clear()
+	game.state = "stage"
+
+func _grab() -> void:
+	clear()
+	game.state = "play"
+	game.to_spawn = 0
+	# find a loose chair or bin to pick up
+	var target = null
+	for b in game.physics.props:
+		if is_instance_valid(b) and b is RigidBody3D and not b.get_meta("ragdoll", false) and not b.has_meta("temp") and b.mass <= 16.0 and absf(b.global_position.y) < 1.5:
+			target = b
+			break
+	print("prop to grab: ", target, " mass ", target.mass if target else -1)
+	# bring it to the open gym floor so the throw has a clear line
+	game.physics.wake(target)
+	target.global_position = Vector3(-46, 0.6, 1.0)
+	target.linear_velocity = Vector3.ZERO
+	await wait(0.6)
+	var tp: Vector3 = target.global_position
+	m._look_at(tp + Vector3(1.4, -0.4, 0.6), tp)
+	await wait(0.3)
+	m._look_at(tp + Vector3(1.4, -0.4, 0.6) - Vector3(0, 0, 0), tp)
+	await get_tree().physics_frame
+	game.interact_target = game._find_interact()
+	print("grab prompt: ", game.interact_target.get("text", ""))
+	game.interact()
+	await wait(0.4)
+	print("holding: ", game.grab.held == target)
+	await snap("grab_hold")
+	var z = zombie("walker", Vector3(-46, 0.05, -5.0), 5)
+	z.speed = 0.0
+	await wait(0.4)
+	m._look_at(player.global_position, z.global_position + Vector3(0, 1.1, 0))
+	await wait(0.1)
+	var hp0: float = z.hp
+	player.trigger = true
+	player.trigger_was = false
+	game.grab.throw()
+	await wait(0.12)
+	await snap("grab_throw")
+	await wait(0.8)
+	print("thrown: zombie hp ", hp0, " -> ", z.hp if is_instance_valid(z) else -1, " alive=", is_instance_valid(z) and z.alive, " stagger=", z.stagger if is_instance_valid(z) else 0)
+	await snap("grab_after")
+	# extinguisher off the wall
+	for e in game.physics.extinguishers:
+		if not e.live and is_instance_valid(e.body):
+			var ep: Vector3 = e.pos
+			m._look_at(ep + Vector3(0, -1.1, 0) + (Vector3(e.pos.x, 0, e.pos.z) - Vector3(e.body.global_position.x, 0, e.body.global_position.z)) + Vector3(0.8, 0, 0.8), ep)
+			await get_tree().physics_frame
+			print("ext prompt: ", game.grab.prompt())
+			break
+	clear()
+	game.state = "stage"
+
+func _deathcam() -> void:
+	clear()
+	game.state = "play"
+	game.to_spawn = 0
+	m._look_at(Vector3(-46, 0.05, 2), Vector3(-46, 1.4, -6))
+	var z = zombie("runner", Vector3(-46, 0.05, 0.6), 5)
+	z.speed = 0.0
+	await wait(0.4)
+	game.last_attacker = z
+	player.hp = 5
+	player.max_hp = 100
+	player.hurt(50)
+	await wait(0.5)
+	await snap("death_swing")
+	await wait(1.2)
+	await snap("death_photo")
+	await wait(2.5)
+	await snap("death_over")
+	print("deathcam playing=", game.deathcam.playing, " state=", game.state)
+
+func _rain() -> void:
+	game.state = "stage"
+	m._look_at(Vector3(10, 0.05, 28), Vector3(30, 1.5, 26))
+	for k in [0.3, 1.0, 1.8]:
+		game.world.rain_k = k
+		game.rain_target = k
+		game.rain_hold = 999.0
+		await wait(1.5)
+		await snap("rain_%s" % str(k))
+	print("rain ratio at 1.8: ", game.world.rain.amount_ratio)
+
+func _lamps() -> void:
+	game.state = "stage"
+	m._look_at(Vector3(-22, 0.05, 15), Vector3(-44, 2.0, 30))
+	await wait(1.0)
+	var st: Array = game.world.lamps.filter(func(l): return l.street)
+	print("street lamps: ", st.size(), " energy before ", st.map(func(l): return snappedf(l.light.light_energy, 0.01)))
+	await snap("lamps_before")
+	game.world.street_surge(0.0)
+	await wait(3.0)
+	print("energy after ", st.map(func(l): return snappedf(l.light.light_energy, 0.01)))
+	await snap("lamps_after")
 
 # ---------------------------------------------------------------- intro students
 func _intro() -> void:

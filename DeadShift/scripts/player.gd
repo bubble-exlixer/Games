@@ -230,6 +230,8 @@ func owns(id: String) -> int:
 func swap() -> void:
 	if slots.size() < 2 or dead or pap_t > 0:
 		return
+	if game.grab and game.grab.held != null:
+		game.grab.drop()
 	cur = 1 - cur
 	build_gun()
 	game.audio.play("swap", null, -3)
@@ -505,7 +507,7 @@ func _swing() -> void:
 	swing_n = (swing_n + 1) % 3 if chain else 0
 	swing_dur = 0.62 if swing_n == 2 else 0.4
 	swing_hit = 0.25 if swing_n == 2 else 0.14
-	fire_t = swing_dur * (0.85 if swing_n == 2 else 0.78)
+	fire_t = swing_dur * (1.15 if swing_n == 2 else 0.78)      # the slam leaves you open for a moment
 	swing_t = 0.0
 	swing_done = false
 	tip_prev = null
@@ -523,7 +525,7 @@ func _swing() -> void:
 		var d := Vector2(d3.x, d3.z).length()
 		if d < best and d < 3.6 and absf(d3.y) < 1.5 and Vector3(d3.x, 0, d3.z).normalized().dot(f) > 0.6:
 			best = d
-	if best < 3.8 and best > 2.0:
+	if swing_n == 0 and best < 3.8 and best > 2.0:      # only the opening swing of a combo lunges
 		# a short burst forward that ends just inside swinging range
 		lunge_t = 0.12
 		lunge_v = f * clampf((best - 1.9) / 0.12, 4.0, 13.0)
@@ -753,7 +755,13 @@ func _process(dt: float) -> void:
 	var wd := w()
 	var s = slots[cur]
 	pap_t = maxf(0.0, pap_t - dt)
-	if not dead and trigger and fire_t <= 0 and reload_t <= 0 and swap_t <= 0 and pap_t <= 0:
+	var carrying: bool = game.grab != null and game.grab.held != null
+	if carrying:
+		if not dead and trigger and not trigger_was:
+			game.grab.throw()
+			fire_t = 0.35
+			swap_t = 0.35
+	elif not dead and trigger and fire_t <= 0 and reload_t <= 0 and swap_t <= 0 and pap_t <= 0:
 		if s.mag > 0:
 			if wd.auto or not trigger_was:
 				shoot()
@@ -788,12 +796,12 @@ func _process(dt: float) -> void:
 		_bat_tick(dt)
 		vm.position = bat_pos + Vector3(cos(bob) * 0.014 * bob_a + sw.x * 0.6, -absf(sin(bob)) * 0.02 * bob_a - swp * 0.35 - land_dip * 0.06 + sw.y * 0.6, 0)
 		vm.rotation = bat_rot + Vector3(sw.y * 0.8, sw.x * 0.8, 0)
-		vm.visible = not dead and pap_t <= 0
+		vm.visible = not dead and pap_t <= 0 and not carrying
 	else:
 		vm.position = Vector3(gx, gy, gz)
 		vm.rotation = Vector3(kick * 0.22 * (1 - 0.6 * ad) - rl * 0.7 - sprint * 0.35 + sw.y * 1.5 * (1 - ad), (sprint * 0.55 + sw.x * 1.4) * (1 - ad), rl * 0.4 + sprint * 0.35 + sw.x * 0.8 * (1 - ad))
 		var scoped: bool = slots[cur].id == "dmr" and ad > 0.85
-		vm.visible = not scoped and not dead and pap_t <= 0
+		vm.visible = not scoped and not dead and pap_t <= 0 and not carrying
 	if flash_node and kick < wd.kick * 0.65:
 		flash_node.visible = false
 	muzzle_light.light_energy = maxf(0.0, muzzle_light.light_energy - dt * 40)
